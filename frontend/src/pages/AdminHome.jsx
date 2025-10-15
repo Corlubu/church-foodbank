@@ -1,7 +1,7 @@
 // frontend/src/pages/AdminHome.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate, Routes, Route, Navigate } from 'react-router-dom';
-import AdminDashboard from '../components/AdminDashboard';
+import AdminDashboard from '../components/AdminDashBoard';
 import ReportTable from '../components/ReportTable';
 
 export default function AdminHome() {
