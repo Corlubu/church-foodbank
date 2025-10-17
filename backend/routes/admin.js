@@ -8,7 +8,7 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // Instead of hardcoding localhost
-const frontendUrl = process.env.FRONTEND_URL || 'https://cchfoodbank.onrender.com/api';
+const frontendUrl = process.env.FRONTEND_URL || 'https://church-foodbank.vercel.app';
 const qrUrl = '${frontendUrl}/citizen/submit/${qrId}';
 
 const router = express.Router();
@@ -63,7 +63,7 @@ router.post('/qr', authenticateToken, authorizeRoles('admin'), async (req, res) 
 
     // Frontend URL (adjust in production)
     ////const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const frontendUrl = process.env.FRONTEND_URL || 'https://cch-foodpantry.onrender.com/api';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://church-foodbank.vercel.app';
     const qrUrl = `${frontendUrl}/citizen/submit/${qrId}`;
 
     res.json({
