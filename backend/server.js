@@ -23,7 +23,7 @@ app.use(helmet());
 // Enable CORS (restrict to your frontend origin in production)
 const corsOptions = {
   ////origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  origin: process.env.VITE_API_URL || 'https://church-foodbank.vercel.app',
+  origin: process.env.FRONTEND_URL || 'https://church-foodbank.vercel.app',
   methods: 'GET, POST, PUT,DELETE',
   credentials: true,
   optionsSuccessStatus: 200
