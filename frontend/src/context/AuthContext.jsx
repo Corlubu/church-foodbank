@@ -116,3 +116,43 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout API call failed:', error);
     } finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      localStorage.removeItem('userData');
+      setUser(null);
+      setError(null);
+    }
+  };
+
+  const clearError = () => {
+    setError(null);
+  };
+
+  const updateUser = (updatedUserData) => {
+    setUser(prevUser => {
+      const newUser = { ...prevUser, ...updatedUserData };
+      localStorage.setItem('userData', JSON.stringify(newUser));
+      return newUser;
+    });
+  };
+
+  const value = {
+    user,
+    loading,
+    error,
+    login,
+    logout,
+    isValidToken,
+    clearError,
+    updateUser,
+    checkAuth
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export default AuthContext;
