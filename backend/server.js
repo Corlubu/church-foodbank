@@ -23,7 +23,7 @@ const app = express();
 // ======================
 // ENVIRONMENT VALIDATION
 // ======================
-const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'];
+const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
@@ -92,7 +92,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+
+// FIXED: Remove the problematic line that was causing the path-to-regexp error
+// app.options('*', cors(corsOptions)); // ← THIS LINE WAS CAUSING THE ERROR
 
 // Body parsing middleware
 app.use(express.json({ 
@@ -185,8 +187,7 @@ app.get('/', (req, res) => {
 // ERROR HANDLING
 // ======================
 
-// FIXED: Proper 404 handler - this must come AFTER all routes
-// Alternative 404 handler that definitely works
+// 404 handler - must come AFTER all routes
 app.use((req, res) => {
   res.status(404).json({
     error: 'Route not found',
@@ -195,6 +196,7 @@ app.use((req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
 // Global error handler - must be last
 app.use(errorHandler);
 
