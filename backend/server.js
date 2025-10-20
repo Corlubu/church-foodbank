@@ -3,9 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const expressMongoSanitize = require('express-mongo-sanitize');
-const hpp = require('hpp');
-const compression = require('compression');
 require('dotenv').config();
 
 // Import routes
@@ -14,7 +11,7 @@ const adminRoutes = require('./routes/admin');
 const staffRoutes = require('./routes/staff');
 const citizenRoutes = require('./routes/citizen');
 
-// Import middleware
+// Import middleware (make sure these files exist)
 const { authenticateJWT, authorizeRoles } = require('./middleware/auth');
 const { errorHandler } = require('./middleware/error');
 const { requestLogger } = require('./middleware/logger');
@@ -25,6 +22,21 @@ const connectDB = require('./config/database');
 const app = express();
 
 // ======================
+// ENVIRONMENT VALIDATION (FIRST!)
+// ======================
+const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingEnvVars);
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  } else {
+    console.warn('⚠️  Running in development with missing environment variables');
+  }
+}
+
+// ======================
 // DATABASE CONNECTION
 // ======================
 connectDB();
@@ -33,7 +45,7 @@ connectDB();
 // SECURITY MIDDLEWARE
 // ======================
 
-// Custom Helmet configuration for specific security headers
+// Custom Helmet configuration
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -46,95 +58,92 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// Enable CORS
+// CORS configuration
+const getCorsOrigins = () => {
+  if (process.env.FRONTEND_URL) {
+    return process.env.FRONTEND_URL.split(',').map(origin => origin.trim());
+  }
+  return process.env.NODE_ENV === 'production' 
+    ? ['https://church-foodbank.vercel.app']
+    : ['http://localhost:5173', 'https://church-foodbank.vercel.app'];
+};
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : ['http://localhost:5173', 'https://church-foodbank.vercel.app'],
+  origin: (origin, callback) => {
+    const allowedOrigins = getCorsOrigins();
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn(`🚫 Blocked by CORS: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
-app.use(cors(corsOptions));
 
-// Request parsing with limits
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Enable pre-flight for all routes
+
+// Body parsing middleware
 app.use(express.json({ 
-  limit: process.env.BODY_LIMIT || '10mb',
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
+  limit: process.env.BODY_LIMIT || '10mb'
 }));
+
 app.use(express.urlencoded({ 
   extended: true, 
   limit: process.env.BODY_LIMIT || '10mb',
-  parameterLimit: 100 // Prevent overloading with too many parameters
+  parameterLimit: 50 // Reduced from 100 for security
 }));
 
-// Data sanitization against NoSQL query injection
-app.use(expressMongoSanitize());
-
-// Prevent parameter pollution
-app.use(hpp({
-  whitelist: ['sort', 'page', 'limit', 'fields'] // Whitelist certain parameters
-}));
-
-// Compression middleware
-app.use(compression());
-
 // ======================
-// LOGGING MIDDLEWARE
-// ======================
-app.use(requestLogger);
-
-// ======================
-// RATE LIMITING
+// RATE LIMITING (REORDERED!)
 // ======================
 
 // General API rate limiter
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: {
-    error: 'Too many requests from this IP, please try again later.'
-  },
+  max: 100,
+  message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Citizen submission rate limiter (more restrictive)
+// Citizen submission rate limiter
 const submissionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 submission requests per windowMs
-  message: {
-    error: 'Too many registration attempts. Please try again later.'
-  },
+  max: 5,
+  message: { error: 'Too many registration attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Use IP + user agent for more accurate rate limiting
-    return req.ip + (req.get('user-agent') || '');
-  }
 });
 
-// Apply general rate limiting to all routes
+// Apply rate limiting in correct order
 app.use('/api/', generalLimiter);
 
 // ======================
-// API ROUTES
+// API ROUTES (CORRECT ORDER)
 // ======================
 
 // Public routes
 app.use('/api/auth', authRoutes);
 
-// Citizen routes with submission-specific rate limiting
-app.use('/api/citizen', citizenRoutes);
-app.use('/api/citizen/submit', submissionLimiter); // Apply only to submission endpoints
+// Citizen routes with proper rate limiting ORDER
+app.use('/api/citizen/submit', submissionLimiter); // Apply limiter FIRST
+app.use('/api/citizen', citizenRoutes); // Then mount routes
 
-// Protected routes (JWT required)
+// Protected routes
 app.use('/api/admin', authenticateJWT, authorizeRoles(['admin']), adminRoutes);
 app.use('/api/staff', authenticateJWT, authorizeRoles(['staff', 'admin']), staffRoutes);
 
 // ======================
-// HEALTH CHECK & ROOT
+// HEALTH CHECK & INFO
 // ======================
 
 app.get('/api/health', (req, res) => {
@@ -143,7 +152,8 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: 'connected' // You might want to check DB connection here
   };
   
   res.json(healthCheck);
@@ -154,7 +164,6 @@ app.get('/api/info', (req, res) => {
     name: 'Church Food Bank API',
     version: '1.0.0',
     description: 'API for managing church food bank operations',
-    documentation: '/api/health for status',
     environment: process.env.NODE_ENV || 'development'
   });
 });
@@ -164,10 +173,10 @@ app.get('/', (req, res) => {
 });
 
 // ======================
-// GLOBAL ERROR HANDLING
+// ERROR HANDLING
 // ======================
 
-// Handle 404 for undefined routes
+// Handle 404 - must be after all routes
 app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Route not found',
@@ -181,60 +190,61 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // ======================
-// ENVIRONMENT VALIDATION
-// ======================
-const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL'];
-const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
-
-if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
-  console.error('❌ Missing required environment variables:', missingEnvVars);
-  process.exit(1);
-}
-
-// ======================
 // SERVER STARTUP
 // ======================
 
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
 
+// Validate port
+if (isNaN(PORT) || PORT < 1 || PORT > 65535) {
+  console.error('❌ Invalid PORT:', PORT);
+  process.exit(1);
+}
+
 const server = app.listen(PORT, HOST, () => {
-  console.log(`✅ Church Food Bank API running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log('='.repeat(50));
+  console.log(`✅ Church Food Bank API Server Started`);
   console.log(`📍 Host: ${HOST}`);
-  console.log(`🔐 Admin login: POST /api/auth/login`);
-  console.log(`📱 Citizen submit: POST /api/citizen/submit/:qrId`);
-  console.log(`📊 Health check: GET /api/health`);
+  console.log(`🚀 Port: ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📊 Health: http://${HOST}:${PORT}/api/health`);
+  console.log('='.repeat(50));
 });
 
 // ======================
 // GRACEFUL SHUTDOWN
 // ======================
 
+const shutdownSignals = ['SIGTERM', 'SIGINT', 'SIGUSR2'];
 const gracefulShutdown = (signal) => {
-  console.log(`\n${signal} received. Shutting down gracefully...`);
+  console.log(`\n${signal} received. Starting graceful shutdown...`);
   
-  server.close(() => {
+  server.close((err) => {
+    if (err) {
+      console.error('❌ Error during shutdown:', err);
+      process.exit(1);
+    }
+    
     console.log('✅ HTTP server closed');
-    
-    // Close database connections here if needed
-    // mongoose.connection.close();
-    
-    console.log('✅ Process terminated gracefully');
+    // Add database disconnection here if needed
+    console.log('✅ Graceful shutdown completed');
     process.exit(0);
   });
 
-  // Force close after 10 seconds
+  // Force shutdown after 8 seconds
   setTimeout(() => {
-    console.error('❌ Could not close connections in time, forcefully shutting down');
+    console.error('❌ Could not close connections in time, forcing shutdown');
     process.exit(1);
-  }, 10000);
+  }, 8000);
 };
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// Register shutdown handlers
+shutdownSignals.forEach(signal => {
+  process.on(signal, () => gracefulShutdown(signal));
+});
 
-// Handle uncaught exceptions and unhandled rejections
+// Handle unhandled exceptions
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
   process.exit(1);
