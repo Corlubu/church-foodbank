@@ -1,5 +1,4 @@
-// frontend/src/components/ManualCitizenForm.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../services/api';
 
 export default function ManualCitizenForm({ onBack }) {
@@ -7,22 +6,23 @@ export default function ManualCitizenForm({ onBack }) {
     name: '',
     phone: '',
     email: '',
-    food_window_id: '' // Will be selected from active windows
+    food_window_id: ''
   });
   const [windows, setWindows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
   // Fetch active food windows on mount
-  useState(() => {
+  useEffect(() => {
     const fetchWindows = async () => {
       try {
         const res = await api.get('/staff/food-windows/active');
         setWindows(res.data);
       } catch (err) {
         setError('Failed to load food windows');
-        console.error(err);
+        console.error('Window fetch error:', err);
       } finally {
         setLoading(false);
       }
@@ -34,93 +34,120 @@ export default function ManualCitizenForm({ onBack }) {
     e.preventDefault();
     setError('');
     setSuccess(false);
+    setSubmitting(true);
 
     try {
-      // Call a new backend endpoint to manually add citizen
       await api.post('/staff/citizen/manual', formData);
       setSuccess(true);
-      // Reset form after 2 seconds
-      setTimeout(() => {
-        setFormData({ name: '', phone: '', email: '', food_window_id: '' });
-        setSuccess(false);
-      }, 2000);
+      // Reset form
+      setFormData({ name: '', phone: '', email: '', food_window_id: '' });
+      // Refresh windows to update counts
+      const res = await api.get('/staff/food-windows/active');
+      setWindows(res.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to register citizen');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   if (loading) {
-    return <div style={styles.center}>Loading food windows...</div>;
+    return (
+      <div style={styles.center}>
+        <div>Loading food windows...</div>
+      </div>
+    );
   }
 
   return (
     <div style={styles.container}>
-      <div style={styles.formCard}>
+      <div style={styles.header}>
+        <button onClick={onBack} style={styles.backButton}>
+          🔙 Back to Menu
+        </button>
         <h2>Manual Citizen Registration</h2>
-        
+      </div>
+      
+      <div style={styles.formCard}>
         {error && <div style={styles.error}>{error}</div>}
         {success && <div style={styles.success}>✅ Citizen registered successfully!</div>}
 
         <form onSubmit={handleSubmit}>
           <div style={styles.formGroup}>
-            <label>Full Name *</label>
+            <label style={styles.label}>Full Name *</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              style={styles.input}
               required
+              maxLength={100}
             />
           </div>
 
           <div style={styles.formGroup}>
-            <label>Phone (+1234567890) *</label>
+            <label style={styles.label}>Phone (+1234567890) *</label>
             <input
               type="tel"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              style={styles.input}
               required
+              placeholder="+1234567890"
             />
           </div>
 
           <div style={styles.formGroup}>
-            <label>Email (Optional)</label>
+            <label style={styles.label}>Email (Optional)</label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              style={styles.input}
+              maxLength={255}
             />
           </div>
 
           <div style={styles.formGroup}>
-            <label>Food Distribution Window *</label>
+            <label style={styles.label}>Food Distribution Window *</label>
             {windows.length === 0 ? (
-  <div style={{ padding: '1rem', backgroundColor: '#fff8e1', borderRadius: '6px' }}>
-    <p>⚠️ No active food distribution windows.</p>
-    <p>Please ask an admin to create a new window.</p>
-  </div>
-) : (
-            <select
-              value={formData.food_window_id}
-              onChange={(e) => setFormData({ ...formData, food_window_id: e.target.value })}
-              required
-            >
-              <option value="">-- Select a window --</option>
-              {windows.map(win => (
-                <option key={win.id} value={win.id}>
-                  {new Date(win.start_time).toLocaleString()} - {new Date(win.end_time).toLocaleString()} 
-                  ({win.used_bags}/{win.available_bags} bags used)
-                </option>
-              ))}
-              
-            </select> )}
+              <div style={styles.noWindows}>
+                <p>⚠️ No active food distribution windows.</p>
+                <p>Please ask an admin to create a new window.</p>
+              </div>
+            ) : (
+              <select
+                value={formData.food_window_id}
+                onChange={(e) => setFormData({ ...formData, food_window_id: e.target.value })}
+                style={styles.select}
+                required
+              >
+                <option value="">-- Select a window --</option>
+                {windows.map(win => (
+                  <option key={win.id} value={win.id}>
+                    {new Date(win.start_time).toLocaleString()} - {new Date(win.end_time).toLocaleString()} 
+                    ({win.used_bags || 0}/{win.available_bags} bags used)
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div style={styles.buttonGroup}>
-            <button type="button" onClick={onBack} style={styles.secondaryButton}>
-              🔙 Back
+            <button 
+              type="button" 
+              onClick={onBack} 
+              style={styles.secondaryButton}
+              disabled={submitting}
+            >
+              Cancel
             </button>
-            <button type="submit" style={styles.primaryButton}>
-              Register Citizen
+            <button 
+              type="submit" 
+              style={styles.primaryButton}
+              disabled={submitting || windows.length === 0}
+            >
+              {submitting ? 'Registering...' : 'Register Citizen'}
             </button>
           </div>
         </form>
@@ -134,6 +161,21 @@ const styles = {
     padding: '1.5rem',
     maxWidth: '600px',
     margin: '0 auto',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    marginBottom: '1.5rem',
+  },
+  backButton: {
+    padding: '0.5rem 1rem',
+    backgroundColor: '#95a5a6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '1rem',
   },
   formCard: {
     backgroundColor: 'white',
@@ -163,6 +205,12 @@ const styles = {
     border: '1px solid #ddd',
     borderRadius: '6px',
     fontSize: '1rem',
+  },
+  noWindows: {
+    padding: '1rem',
+    backgroundColor: '#fff8e1',
+    borderRadius: '6px',
+    textAlign: 'center',
   },
   buttonGroup: {
     display: 'flex',
