@@ -1,6 +1,6 @@
 // frontend/src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from './context/AuthContext';
+import { useAuth, AuthProvider } from './context/AuthContext'; // Added AuthProvider import
 import LoadingSpinner from './components/LoadingSpinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -129,10 +129,10 @@ function AppContent() {
         <Route 
           path="*" 
           element={
-            <div className="min-h-screen flex items-center justify-center">
-              <div className="text-center">
-                <h1 className="text-2xl font-bold mb-4">404 - Page Not Found</h1>
-                <p className="mb-4">The page you're looking for doesn't exist.</p>
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ textAlign: 'center' }}>
+                <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '1rem' }}>404 - Page Not Found</h1>
+                <p style={{ marginBottom: '1rem' }}>The page you're looking for doesn't exist.</p>
                 <Navigate to="/" replace />
               </div>
             </div>
