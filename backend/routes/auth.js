@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // Assuming you have a User model
+//const User = require('../models/User'); // Assuming you have a User model
 
 // Mock user data - replace with your actual user database
 const users = [
