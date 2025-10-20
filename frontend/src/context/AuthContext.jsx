@@ -2,8 +2,10 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { authAPI } from '../services/api';
 
+// Create Auth Context
 const AuthContext = createContext();
 
+// Custom hook to use auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -12,15 +14,18 @@ export const useAuth = () => {
   return context;
 };
 
+// Auth Provider Component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Check authentication status on app start
   useEffect(() => {
     checkAuth();
   }, []);
 
+  // Verify token with backend
   const checkAuth = async () => {
     try {
       setLoading(true);
@@ -31,26 +36,26 @@ export const AuthProvider = ({ children }) => {
       const userData = localStorage.getItem('userData');
       
       if (token && role) {
-        if (!isTokenExpired(token)) {
-          if (userData) {
-            setUser(JSON.parse(userData));
-          }
+        // If we have user data in localStorage, use it immediately
+        if (userData) {
+          setUser(JSON.parse(userData));
+        }
+        
+        // Verify with backend
+        try {
+          const response = await authAPI.verifyToken();
+          const fullUserData = {
+            role,
+            ...response.user,
+            token
+          };
           
-          try {
-            const response = await authAPI.verifyToken();
-            const fullUserData = {
-              role,
-              ...response.user,
-              token
-            };
-            
-            setUser(fullUserData);
-            localStorage.setItem('userData', JSON.stringify(fullUserData));
-          } catch (verifyError) {
-            console.warn('Token verification failed:', verifyError);
-            logout();
-          }
-        } else {
+          setUser(fullUserData);
+          // Update localStorage with fresh user data
+          localStorage.setItem('userData', JSON.stringify(fullUserData));
+        } catch (verifyError) {
+          console.warn('Token verification failed:', verifyError);
+          // Token is invalid, logout user
           logout();
         }
       }
@@ -63,6 +68,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check if token is expired (client-side only)
   const isTokenExpired = (token) => {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
@@ -72,12 +78,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check if current token is valid
   const isValidToken = () => {
     const token = localStorage.getItem('token');
     if (!token) return false;
     return !isTokenExpired(token);
   };
 
+  // Login function
   const login = async (email, password) => {
     try {
       setLoading(true);
@@ -88,10 +96,12 @@ export const AuthProvider = ({ children }) => {
       if (response.token && response.user) {
         const { token, user } = response;
         
+        // Store in localStorage
         localStorage.setItem('token', token);
         localStorage.setItem('role', user.role);
         localStorage.setItem('userData', JSON.stringify(user));
         
+        // Set user in state
         setUser(user);
         
         return { success: true, user };
@@ -100,7 +110,7 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Invalid response from server');
       
     } catch (error) {
-      const errorMessage = error.message || 'Login failed';
+      const errorMessage = error.response?.data?.error || error.message || 'Login failed';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
@@ -108,14 +118,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Logout function
   const logout = async () => {
     try {
+      // Call logout API if user was logged in
       if (user) {
         await authAPI.logout();
       }
     } catch (error) {
       console.error('Logout API call failed:', error);
     } finally {
+      // Always clear local storage and state
       localStorage.removeItem('token');
       localStorage.removeItem('role');
       localStorage.removeItem('userData');
@@ -124,10 +137,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Clear error
   const clearError = () => {
     setError(null);
   };
 
+  // Update user data
   const updateUser = (updatedUserData) => {
     setUser(prevUser => {
       const newUser = { ...prevUser, ...updatedUserData };
@@ -136,6 +151,7 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
+  // Context value
   const value = {
     user,
     loading,
