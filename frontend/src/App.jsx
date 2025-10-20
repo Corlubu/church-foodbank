@@ -1,35 +1,32 @@
 // frontend/src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useMemo, useState, useEffect } from 'react';
+import { useAuth } from './context/AuthContext';
+import LoadingSpinner from './components/LoadingSpinner';
+import ErrorBoundary from './components/ErrorBoundary';
 
-// Pages many
+// Pages
 import Login from './pages/Login';
 import AdminHome from './pages/AdminHome';
 import StaffScan from './pages/StaffScan';
 import StaffDashboard from './pages/StaffDashboard';
 import CitizenSubmit from './pages/CitizenSubmit';
 import ReportTable from './components/ReportTable';
-import LoadingSpinner from './components/LoadingSpinner';
-import ErrorBoundary from './components/ErrorBoundary';
 
-// ==============================
-// Auth Context (Recommended Addition)
-// ==============================
-import { AuthProvider, useAuth } from './context/AuthContext';
-
-// ==============================
-// Protected Route Wrapper (Improved)
-// ==============================
+// Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading, isValidToken } = useAuth();
   const location = useLocation();
 
-  // Show loading spinner while checking authentication
   if (loading) {
-    return <LoadingSpinner message="Verifying access..." />;
+    return (
+      <LoadingSpinner 
+        message="Verifying access..." 
+        fullScreen 
+        variant="ring"
+      />
+    );
   }
 
-  // Check if user is authenticated and has required role
   const isAuthorized = user && allowedRoles.includes(user.role) && isValidToken();
 
   if (!isAuthorized) {
@@ -37,21 +34,18 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  return (
-    <ErrorBoundary>
-      {children}
-    </ErrorBoundary>
-  );
+  return <ErrorBoundary>{children}</ErrorBoundary>;
 };
 
-// ==============================
-// Public Route Wrapper
-// ==============================
+// Public Route Component (redirects to dashboard if already authenticated)
 const PublicRoute = ({ children }) => {
-  const { user, isValidToken } = useAuth();
+  const { user, loading, isValidToken } = useAuth();
   const location = useLocation();
 
-  // If user is already authenticated, redirect to appropriate dashboard
+  if (loading) {
+    return <LoadingSpinner message="Loading..." />;
+  }
+
   if (user && isValidToken()) {
     const from = location.state?.from?.pathname || 
       (user.role === 'admin' ? '/admin' : '/staff/scan');
@@ -61,15 +55,12 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-// ==============================
 // Main App Component
-// ==============================
 function AppContent() {
-  const { user, loading, isValidToken } = useAuth();
+  const { loading } = useAuth();
 
-  // Show loading spinner during initial auth check
   if (loading) {
-    return <LoadingSpinner message="Loading application..." />;
+    return <LoadingSpinner message="Loading application..." fullScreen />;
   }
 
   return (
@@ -131,23 +122,19 @@ function AppContent() {
         {/* Default Redirect */}
         <Route 
           path="/" 
-          element={
-            user && isValidToken() ? (
-              <Navigate to={user.role === 'admin' ? '/admin' : '/staff/scan'} replace />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          } 
+          element={<Navigate to="/login" replace />}
         />
 
-        {/* 404 Page */}
+        {/* 404 Catch All */}
         <Route 
           path="*" 
           element={
-            <div style={{ padding: '2rem', textAlign: 'center' }}>
-              <h2>404 - Page Not Found</h2>
-              <p>The page you're looking for doesn't exist.</p>
-              <Navigate to="/" replace />
+            <div className="min-h-screen flex items-center justify-center">
+              <div className="text-center">
+                <h1 className="text-2xl font-bold mb-4">404 - Page Not Found</h1>
+                <p className="mb-4">The page you're looking for doesn't exist.</p>
+                <Navigate to="/" replace />
+              </div>
             </div>
           } 
         />
@@ -156,9 +143,7 @@ function AppContent() {
   );
 }
 
-// ==============================
-// Main App Wrapper
-// ==============================
+// App Wrapper with AuthProvider
 function App() {
   return (
     <ErrorBoundary>
