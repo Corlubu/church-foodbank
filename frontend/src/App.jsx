@@ -2,7 +2,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useMemo, useState, useEffect } from 'react';
 
-// Pages
+// Pages many
 import Login from './pages/Login';
 import AdminHome from './pages/AdminHome';
 import StaffScan from './pages/StaffScan';
