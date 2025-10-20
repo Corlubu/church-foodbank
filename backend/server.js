@@ -186,7 +186,8 @@ app.get('/', (req, res) => {
 // ======================
 
 // FIXED: Proper 404 handler - this must come AFTER all routes
-app.use((req, res, next) => {
+// Alternative 404 handler that definitely works
+app.use((req, res) => {
   res.status(404).json({
     error: 'Route not found',
     path: req.originalUrl,
@@ -194,7 +195,6 @@ app.use((req, res, next) => {
     timestamp: new Date().toISOString()
   });
 });
-
 // Global error handler - must be last
 app.use(errorHandler);
 
