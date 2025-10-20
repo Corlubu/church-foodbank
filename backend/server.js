@@ -21,11 +21,19 @@ const app = express();
 app.use(helmet());
 
 // Enable CORS (restrict to your frontend origin in production)
+  const allowedOrigins = ['https://church-foodbank.vercel.app'];
 const corsOptions = {
   ////origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  origin: process.env.FRONTEND_URL || 'https://church-foodbank.vercel.app',
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: 'GET, POST, PUT,DELETE',
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
