@@ -3,6 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const expressMongoSanitize = require('express-mongo-sanitize');
+const hpp = require('hpp');
+const compression = require('compression');
 require('dotenv').config();
 
 // Import routes
@@ -11,53 +14,109 @@ const adminRoutes = require('./routes/admin');
 const staffRoutes = require('./routes/staff');
 const citizenRoutes = require('./routes/citizen');
 
+// Import middleware
+const { authenticateJWT, authorizeRoles } = require('./middleware/auth');
+const { errorHandler } = require('./middleware/error');
+const { requestLogger } = require('./middleware/logger');
+
+// Import database connection
+const connectDB = require('./config/database');
+
 const app = express();
+
+// ======================
+// DATABASE CONNECTION
+// ======================
+connectDB();
 
 // ======================
 // SECURITY MIDDLEWARE
 // ======================
 
-// Set secure HTTP headers
-app.use(helmet());
-
-// Enable CORS (restrict to your frontend origin in production)
-  const allowedOrigins = ['https://church-foodbank.vercel.app'];
-const corsOptions = {
-  ////origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+// Custom Helmet configuration for specific security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
   },
-  methods: 'GET, POST, PUT,DELETE',
+  crossOriginEmbedderPolicy: false
+}));
+
+// Enable CORS
+const corsOptions = {
+  origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : ['http://localhost:5173', 'https://church-foodbank.vercel.app'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 app.use(cors(corsOptions));
 
-// Parse JSON bodies
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Request parsing with limits
+app.use(express.json({ 
+  limit: process.env.BODY_LIMIT || '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: process.env.BODY_LIMIT || '10mb',
+  parameterLimit: 100 // Prevent overloading with too many parameters
+}));
+
+// Data sanitization against NoSQL query injection
+app.use(expressMongoSanitize());
+
+// Prevent parameter pollution
+app.use(hpp({
+  whitelist: ['sort', 'page', 'limit', 'fields'] // Whitelist certain parameters
+}));
+
+// Compression middleware
+app.use(compression());
+
+// ======================
+// LOGGING MIDDLEWARE
+// ======================
+app.use(requestLogger);
 
 // ======================
 // RATE LIMITING
 // ======================
 
-// Limit citizen submissions to prevent abuse
-const citizenLimiter = rateLimit({
+// General API rate limiter
+const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
+  max: 100, // limit each IP to 100 requests per windowMs
   message: {
-    error: 'Too many registration attempts. Please try again later.'
+    error: 'Too many requests from this IP, please try again later.'
   },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-app.use('/api/citizen', citizenLimiter);
+// Citizen submission rate limiter (more restrictive)
+const submissionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 submission requests per windowMs
+  message: {
+    error: 'Too many registration attempts. Please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Use IP + user agent for more accurate rate limiting
+    return req.ip + (req.get('user-agent') || '');
+  }
+});
+
+// Apply general rate limiting to all routes
+app.use('/api/', generalLimiter);
 
 // ======================
 // API ROUTES
@@ -65,31 +124,43 @@ app.use('/api/citizen', citizenLimiter);
 
 // Public routes
 app.use('/api/auth', authRoutes);
+
+// Citizen routes with submission-specific rate limiting
 app.use('/api/citizen', citizenRoutes);
+app.use('/api/citizen/submit', submissionLimiter); // Apply only to submission endpoints
 
 // Protected routes (JWT required)
-app.use('/api/admin', adminRoutes);
-app.use('/api/staff', staffRoutes);
+app.use('/api/admin', authenticateJWT, authorizeRoles(['admin']), adminRoutes);
+app.use('/api/staff', authenticateJWT, authorizeRoles(['staff', 'admin']), staffRoutes);
 
 // ======================
 // HEALTH CHECK & ROOT
 // ======================
 
 app.get('/api/health', (req, res) => {
-  res.json({
+  const healthCheck = {
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    message: 'Church Food Bank API is running 🙏'
+    memory: process.memoryUsage(),
+    environment: process.env.NODE_ENV || 'development'
+  };
+  
+  res.json(healthCheck);
+});
+
+app.get('/api/info', (req, res) => {
+  res.json({
+    name: 'Church Food Bank API',
+    version: '1.0.0',
+    description: 'API for managing church food bank operations',
+    documentation: '/api/health for status',
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
 app.get('/', (req, res) => {
-  res.json({
-    name: 'Church Food Bank API',
-    version: '1.0.0',
-    documentation: 'Visit /api/health for status'
-  });
+  res.redirect('/api/info');
 });
 
 // ======================
@@ -97,50 +168,81 @@ app.get('/', (req, res) => {
 // ======================
 
 // Handle 404 for undefined routes
-app.use('/{*any}', (req, res) => {
+app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Route not found',
-    path: req.originalUrl
+    path: req.originalUrl,
+    method: req.method,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Global error handler (for uncaught errors)
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
+// Global error handler
+app.use(errorHandler);
+
+// ======================
+// ENVIRONMENT VALIDATION
+// ======================
+const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0 && process.env.NODE_ENV === 'production') {
+  console.error('❌ Missing required environment variables:', missingEnvVars);
+  process.exit(1);
+}
 
 // ======================
 // SERVER STARTUP
 // ======================
 
 const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || '0.0.0.0';
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`✅ Church Food Bank API running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📍 Host: ${HOST}`);
   console.log(`🔐 Admin login: POST /api/auth/login`);
   console.log(`📱 Citizen submit: POST /api/citizen/submit/:qrId`);
+  console.log(`📊 Health check: GET /api/health`);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
+// ======================
+// GRACEFUL SHUTDOWN
+// ======================
+
+const gracefulShutdown = (signal) => {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  
   server.close(() => {
+    console.log('✅ HTTP server closed');
+    
+    // Close database connections here if needed
+    // mongoose.connection.close();
+    
     console.log('✅ Process terminated gracefully');
     process.exit(0);
   });
+
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('❌ Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions and unhandled rejections
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  process.exit(1);
 });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Process terminated gracefully');
-    process.exit(0);
-  });
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });
 
 module.exports = app;
