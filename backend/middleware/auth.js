@@ -1,3 +1,4 @@
+// backend/middleware/auth.js
 const jwt = require('jsonwebtoken');
 
 const authenticateJWT = (req, res, next) => {
@@ -11,6 +12,7 @@ const authenticateJWT = (req, res, next) => {
       req.user = decoded;
       next();
     } catch (error) {
+      console.error('JWT verification failed:', error.message);
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
   } else {
@@ -18,11 +20,21 @@ const authenticateJWT = (req, res, next) => {
   }
 };
 
-const authorizeRoles = (roles) => {
+const authorizeRoles = (...allowedRoles) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      console.warn(`Unauthorized access attempt by ${req.user.role} to ${req.method} ${req.path}`);
+      return res.status(403).json({ 
+        error: 'Insufficient permissions',
+        required: allowedRoles,
+        current: req.user.role
+      });
+    }
+
     next();
   };
 };
