@@ -1,13 +1,14 @@
 // frontend/src/components/LoginForm.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../services/api';
+import { useAuth } from '../context/AuthContext'; // Use AuthContext instead of direct API
 
 export default function LoginForm() {
-  const [formData, setFormData] = useState({ username: '', password: '' });
+  const [formData, setFormData] = useState({ email: '', password: '' }); // Changed from username to email
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -15,20 +16,20 @@ export default function LoginForm() {
     setError('');
 
     try {
-      const res = await api.post('/auth/login', formData);
-      const { token, role } = res.data;
-
-      localStorage.setItem('token', token);
-      localStorage.setItem('role', role);
-
-      // Redirect based on role
-      if (role === 'admin') {
-        navigate('/admin');
-      } else if (role === 'staff') {
-        navigate('/staff/scan');
+      const result = await login(formData.email, formData.password);
+      
+      if (result.success) {
+        // Redirect based on role
+        if (result.user.role === 'admin') {
+          navigate('/admin');
+        } else if (result.user.role === 'staff') {
+          navigate('/staff');
+        }
+      } else {
+        setError(result.error);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Check credentials.');
+      setError(err.message || 'Login failed. Check credentials.');
     } finally {
       setLoading(false);
     }
@@ -37,18 +38,18 @@ export default function LoginForm() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <img className={styles.Logo} src="/cch.png" center={true} alt="CCH Logo" style={{ display: 'block', margin: '0 auto 1rem', maxWidth: '300px' }} />
-        <h2 style={styles.title} center>CCH PANTRY</h2>
+        <img src="/cch.png" alt="CCH Logo" style={styles.logo} />
+        <h2 style={styles.title}>CCH PANTRY</h2>
         <p style={styles.subtitle}>Login</p>
 
         {error && <div style={styles.error}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <input
-            type="text"
-            placeholder="Username"
-            value={formData.username}
-            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+            type="email" // Changed to email type
+            placeholder="Email"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             style={styles.input}
             required
           />
@@ -88,6 +89,11 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '8px',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+  },
+  logo: {
+    display: 'block',
+    margin: '0 auto 1rem',
+    maxWidth: '300px'
   },
   title: {
     textAlign: 'center',
