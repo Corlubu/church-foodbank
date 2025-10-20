@@ -5,12 +5,19 @@ import { QRCodeCanvas } from 'qrcode.react';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  
-  // 🔑 NEW: State to control form visibility
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [formData, setFormData] = useState({
+    available_bags: '',
+    start_time: '',
+    end_time: '',
+    hours_valid: '24'
+  });
+  const [qrData, setQrData] = useState(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   const handleCreateNew = () => {
-    setShowCreateForm(true); // ✅ Show form when button clicked
+    setShowCreateForm(true);
   };
 
   const handleViewReport = () => {
@@ -20,12 +27,13 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
+    localStorage.removeItem('userData');
     navigate('/login');
   };
+
   const downloadQR = () => {
     if (!qrData?.qrUrl) return;
 
-  // Create a temporary canvas
     const canvas = document.querySelector('canvas');
     if (!canvas) return;
 
@@ -36,18 +44,7 @@ export default function AdminDashboard() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }
-
-  // Form state
-  const [formData, setFormData] = useState({
-    available_bags: '',
-    start_time: '',
-    end_time: '',
-    hours_valid: '24'
-  });
-    const [qrData, setQrData] = useState(null);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,43 +52,38 @@ export default function AdminDashboard() {
     setMessage('');
 
     try {
+      // Create food window first
       const windowRes = await api.post('/admin/food-window', {
         available_bags: parseInt(formData.available_bags),
         start_time: formData.start_time,
         end_time: formData.end_time
       });
       
+      // Then generate QR code
       const qrRes = await api.post('/admin/qr', {
         food_window_id: windowRes.data.id,
         hours_valid: parseInt(formData.hours_valid)
       });
+      
       setQrData(qrRes.data);
       setMessage('✅ Food window created and QR generated!');
       setFormData({ available_bags: '', start_time: '', end_time: '', hours_valid: '24' });
-      
-      // Optional: Hide form after success
-      // setShowCreateForm(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create food window');
     }    
   };
 
   return (
-   <div style={styles.card}>
-      <header style={{
-        ...styles.header,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center'
-        }}>
+    <div style={styles.container}>
+      <header style={styles.header}>
         <img 
-          className={styles.Logo} 
           src="/cch.png" 
           alt="CCH Logo" 
-          style={{ display: 'block', margin: '0 auto 1rem', maxWidth: '300px' }} 
+          style={styles.logo} 
         />    
         <h1 style={styles.title}>CCH Pantry Admin</h1> 
       </header>
+      
       <div style={styles.main}>
         {/* Action Buttons */}
         <div style={styles.actionCard}>
@@ -103,16 +95,16 @@ export default function AdminDashboard() {
             <button onClick={handleViewReport} style={{ ...styles.actionButton, backgroundColor: '#27ae60' }}>
               📊 Generate Citizen Report
             </button>
-             <button onClick={handleLogout} style={styles.logoutButton}>
-                🔙 Logout
-              </button>
+            <button onClick={handleLogout} style={styles.logoutButton}>
+              🔙 Logout
+            </button>
           </div>
         </div>
 
-        {/* ✅ Conditionally render form ONLY when showCreateForm is true */}
+        {/* Create Form */}
         {showCreateForm && (
           <div style={styles.formCard}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={styles.formHeader}>
               <h2>Create New Food Distribution</h2>
               <button 
                 onClick={() => setShowCreateForm(false)} 
@@ -121,49 +113,54 @@ export default function AdminDashboard() {
                 ✕ Close
               </button>
             </div>
+            
             {error && <div style={styles.error}>{error}</div>}
             {message && <div style={styles.success}>{message}</div>}
 
             <form onSubmit={handleSubmit}>
               <div style={styles.formGroup}>
-                <label>Bags Available:</label>
+                <label style={styles.label}>Bags Available:</label>
                 <input
                   type="number"
                   min="1"
                   value={formData.available_bags}
                   onChange={(e) => setFormData({ ...formData, available_bags: e.target.value })}
+                  style={styles.input}
                   required
                 />
               </div>
 
               <div style={styles.formGroup}>
-                <label>Start Time:</label>
+                <label style={styles.label}>Start Time:</label>
                 <input
                   type="datetime-local"
                   value={formData.start_time}
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                  style={styles.input}
                   required
                 />
               </div>
 
               <div style={styles.formGroup}>
-                <label>End Time:</label>
+                <label style={styles.label}>End Time:</label>
                 <input
                   type="datetime-local"
                   value={formData.end_time}
                   onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                  style={styles.input}
                   required
                 />
               </div>
 
               <div style={styles.formGroup}>
-                <label>QR Valid For (hours):</label>
+                <label style={styles.label}>QR Valid For (hours):</label>
                 <input
                   type="number"
                   min="1"
                   max="168"
                   value={formData.hours_valid}
                   onChange={(e) => setFormData({ ...formData, hours_valid: e.target.value })}
+                  style={styles.input}
                 />
               </div>
 
@@ -173,29 +170,32 @@ export default function AdminDashboard() {
             </form>
           </div>
         )}
+
+        {/* QR Code Display */}
         {qrData && (
           <div style={styles.qrCard}>
             <h3>Generated QR Code</h3>
             <p>Valid until: {new Date(qrData.expiresAt).toLocaleString()}</p>
             
-            {/* ✅ REAL QR CODE IMAGE */}
             <div style={styles.qrDisplay}>
               <QRCodeCanvas
                 value={qrData.qrUrl}
                 size={256}
-                level={"M"}                
+                level="M"                
               />
             </div>
             
-            <button onClick={downloadQR} style={styles.downloadButton}>
-              📥 Download QR
-            </button>
-            <button 
-              onClick={() => navigate('/admin/report')} 
-              style={{ ...styles.downloadButton, backgroundColor: '#8e44ad' }}
-            >
-              📊 View Full Report
-            </button>
+            <div style={styles.qrButtons}>
+              <button onClick={downloadQR} style={styles.downloadButton}>
+                📥 Download QR
+              </button>
+              <button 
+                onClick={() => navigate('/admin/report')} 
+                style={{ ...styles.downloadButton, backgroundColor: '#8e44ad' }}
+              >
+                📊 View Full Report
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -203,7 +203,6 @@ export default function AdminDashboard() {
   );
 }
 
-// Styles (with new closeButton)
 const styles = {
   container: {
     minHeight: '100vh',
@@ -211,11 +210,20 @@ const styles = {
   },
   header: {
     display: 'flex',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     alignItems: 'center',
-    padding: '1rem 2rem',
+    padding: '2rem',
     backgroundColor: 'white',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+  },
+  logo: {
+    display: 'block',
+    margin: '0 auto 1rem',
+    maxWidth: '300px'
+  },
+  title: {
+    margin: 0,
+    color: '#2c3e50'
   },
   main: {
     padding: '2rem',
@@ -248,11 +256,27 @@ const styles = {
     cursor: 'pointer',
     fontWeight: 'bold',
   },
+  logoutButton: {
+    padding: '1rem',
+    fontSize: '1.1rem',
+    backgroundColor: '#e74c3c',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+  },
   formCard: {
     backgroundColor: 'white',
     padding: '2rem',
     borderRadius: '12px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+  },
+  formHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '1.5rem'
   },
   closeButton: {
     background: 'none',
@@ -306,9 +330,26 @@ const styles = {
     marginBottom: '1rem',
     textAlign: 'center',
   },
-  logoutButton: {
-    padding: '0.5rem 1rem',
-    backgroundColor: '#e74c3c',
+  qrCard: {
+    backgroundColor: 'white',
+    padding: '2rem',
+    borderRadius: '12px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+    textAlign: 'center',
+  },
+  qrDisplay: {
+    margin: '1.5rem 0',
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  qrButtons: {
+    display: 'flex',
+    gap: '1rem',
+    justifyContent: 'center',
+  },
+  downloadButton: {
+    padding: '0.75rem 1.5rem',
+    backgroundColor: '#3498db',
     color: 'white',
     border: 'none',
     borderRadius: '6px',
