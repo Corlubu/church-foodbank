@@ -1,0 +1,171 @@
+/* frontend/src/components/LoadingSpinner.css */
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  color: var(--spinner-color, #3498db);
+}
+
+/* Size Variants */
+.loading-spinner--small {
+  font-size: 0.875rem;
+  gap: 0.75rem;
+}
+
+.loading-spinner--medium {
+  font-size: 1rem;
+  gap: 1rem;
+}
+
+.loading-spinner--large {
+  font-size: 1.25rem;
+  gap: 1.25rem;
+}
+
+/* Overlay and Fullscreen Styles */
+.loading-spinner--overlay {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.loading-spinner--fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.95);
+  z-index: 9999;
+}
+
+/* Message Styling */
+.loading-spinner__message {
+  font-weight: 500;
+  text-align: center;
+  color: #2c3e50;
+  margin: 0;
+}
+
+/* Dots Spinner Animation */
+.dots-spinner {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.dots-spinner .dot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: dots-bounce 1.4s ease-in-out infinite both;
+}
+
+.dots-spinner .dot:nth-child(1) { animation-delay: -0.32s; }
+.dots-spinner .dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes dots-bounce {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Ring Spinner Animation */
+.ring-spinner {
+  display: inline-block;
+  position: relative;
+  width: 4em;
+  height: 4em;
+}
+
+.ring-spinner div {
+  box-sizing: border-box;
+  display: block;
+  position: absolute;
+  width: 3.2em;
+  height: 3.2em;
+  margin: 0.4em;
+  border: 0.3em solid currentColor;
+  border-radius: 50%;
+  animation: ring-spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  border-color: currentColor transparent transparent transparent;
+}
+
+.ring-spinner div:nth-child(1) { animation-delay: -0.45s; }
+.ring-spinner div:nth-child(2) { animation-delay: -0.3s; }
+.ring-spinner div:nth-child(3) { animation-delay: -0.15s; }
+
+@keyframes ring-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Bars Spinner Animation */
+.bars-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2em;
+  height: 2em;
+}
+
+.bars-spinner .bar {
+  width: 0.3em;
+  height: 1em;
+  background-color: currentColor;
+  animation: bars-wave 1.2s ease-in-out infinite;
+}
+
+.bars-spinner .bar:nth-child(1) { animation-delay: -1.2s; }
+.bars-spinner .bar:nth-child(2) { animation-delay: -1.1s; }
+.bars-spinner .bar:nth-child(3) { animation-delay: -1.0s; }
+.bars-spinner .bar:nth-child(4) { animation-delay: -0.9s; }
+.bars-spinner .bar:nth-child(5) { animation-delay: -0.8s; }
+
+@keyframes bars-wave {
+  0%, 40%, 100% {
+    transform: scaleY(0.4);
+  }
+  20% {
+    transform: scaleY(1);
+  }
+}
+
+/* Pulse Spinner Animation */
+.pulse-spinner {
+  width: 2em;
+  height: 2em;
+  background-color: currentColor;
+  border-radius: 50%;
+  animation: pulse-scale 1.0s infinite ease-in-out;
+}
+
+@keyframes pulse-scale {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.0);
+    opacity: 0;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .loading-spinner {
+    padding: 1rem;
+  }
+  
+  .loading-spinner--fullscreen {
+    padding: 2rem;
+  }
+}
