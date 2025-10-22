@@ -4,6 +4,10 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+
+// Global API Prefix
+const API_PREFIX = '/api';
+
 // Use the dotenv config first to ensure environment variables are loaded
 require('dotenv').config(); 
 
@@ -146,13 +150,13 @@ app.use('/api/citizen/submit', submissionLimiter);
 app.use('/api/citizen', citizenRoutes);
 
 // Protected routes (Note: Ensure 'authenticateToken' is renamed to 'authenticateJWT' in admin.js and staff.js)
-app.use('/api/admin', authenticateJWT, authorizeRoles(['admin']), adminRoutes);
-app.use('/api/staff', authenticateJWT, authorizeRoles(['staff', 'admin']), staffRoutes);
+app.use('${API_PREFIX}/admin', authenticateJWT, authorizeRoles(['admin']), adminRoutes);
+app.use('${API_PREFIX}/staff', authenticateJWT, authorizeRoles(['staff', 'admin']), staffRoutes);
 
 // ======================
 // 6. HEALTH CHECK & INFO
 // ======================
-app.get('/api/health', async (req, res) => {
+app.get('${API_PREFIX}/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
     res.json({
