@@ -140,7 +140,7 @@ app.use('/api/', generalLimiter);
 // ======================
 // 5. API ROUTES
 // ======================
-app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
 
 // Apply strict limiter before mounting the route
 app.use('/api/citizen/submit', submissionLimiter); 
