@@ -1,11 +1,17 @@
 // frontend/src/services/api.js
+
 import axios from 'axios';
+
+// Get base URL from environment variable, fall back to localhost for development
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: BASE_URL,
   timeout: 10000,
-  withCredentials: true, // Important for cookies if using them
+  // withCredentials is not typically needed with JWT in localStorage, 
+  // but keeping it won't hurt if you plan to use httpOnly cookies later.
+  withCredentials: true, 
 });
 
 // Request interceptor to add auth token
@@ -22,32 +28,25 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle common errors
+// Response interceptor to handle common errors (e.g., expired token)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
+    // 401: Unauthorized (token expired/invalid)
+    if (error.response?.status === 401 && !error.config.url.includes('/auth/login')) {
+      console.error('Token expired or unauthorized access. Redirecting to login.');
       localStorage.removeItem('token');
       localStorage.removeItem('role');
-      window.location.href = '/login';
+      // Use window.location.href to force a full refresh and clear state
+      window.location.href = '/login'; 
     }
     return Promise.reject(error);
   }
 );
 
-// Auth API methods
-export const authAPI = {
-  // Verify token with backend
-  verifyToken: async () => {
-    try {
-      const response = await api.get('/auth/verify');
-      return response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.error || 'Token verification failed');
-    }
-  },
+// --- API Methods ---
 
+export const authAPI = {
   // Login user
   login: async (email, password) => {
     try {
@@ -58,32 +57,17 @@ export const authAPI = {
     }
   },
 
-  // Logout user
-  logout: async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      // Always clear local storage
-      localStorage.removeItem('token');
-      localStorage.removeItem('role');
-    }
-  },
-
-  // Refresh token (if implementing token refresh)
-  refreshToken: async () => {
-    try {
-      const response = await api.post('/auth/refresh');
-      return response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.error || 'Token refresh failed');
-    }
+  // Logout (optional: could call a backend endpoint to revoke token)
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('role');
+    // Client-side logout is sufficient for stateless JWT
   }
 };
 
 // Admin API methods
 export const adminAPI = {
+  // Placeholder for a GET request to the admin dashboard
   getDashboardData: async () => {
     try {
       const response = await api.get('/admin/dashboard');
@@ -93,45 +77,115 @@ export const adminAPI = {
     }
   },
 
-  getReports: async () => {
+  // Fetch Excel report (The backend route for this is not fully clear, assuming /admin/report/excel)
+  downloadReport: async (foodWindowId) => {
     try {
-      const response = await api.get('/admin/reports');
+      const response = await api.get(`/admin/report/excel?foodWindowId=${foodWindowId}`, {
+        responseType: 'blob' // Important for file downloads
+      });
       return response.data;
     } catch (error) {
-      throw new Error(error.response?.data?.error || 'Failed to fetch reports');
+      throw new Error(error.response?.data?.error || 'Failed to download report');
+    }
+  },
+  
+  // Get all food windows (for admin views)
+  getAllFoodWindows: async () => {
+    try {
+      const response = await api.get('/admin/food-windows');
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to fetch food windows');
+    }
+  },
+
+  // Create a new food window
+  createFoodWindow: async (data) => {
+    try {
+      const response = await api.post('/admin/food-window', data);
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to create food window');
+    }
+  },
+  
+  // Toggle food window active status
+  toggleFoodWindowActive: async (id, is_active) => {
+    try {
+      const response = await api.patch(`/admin/food-window/${id}/active`, { is_active });
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to update food window status');
     }
   }
 };
 
 // Staff API methods
 export const staffAPI = {
-  scanQRCode: async (qrId) => {
+  /**
+   * CORRECTED: Use GET request to match the backend /staff/lookup/:qrId route.
+   * Fetches citizen data based on QR ID.
+   */
+  lookupCitizenByQR: async (qrId) => {
     try {
-      const response = await api.post('/staff/scan', { qrId });
+      // Use URL parameter for GET request
+      const response = await api.get(`/staff/lookup/${qrId}`); 
       return response.data;
     } catch (error) {
-      throw new Error(error.response?.data?.error || 'Scan failed');
+      throw new Error(error.response?.data?.error || 'QR lookup failed');
     }
   },
-
-  getStaffDashboard: async () => {
+  
+  // Manual registration by staff
+  manualRegisterCitizen: async (formData) => {
     try {
-      const response = await api.get('/staff/dashboard');
+      const response = await api.post('/staff/citizen/manual', formData);
       return response.data;
     } catch (error) {
-      throw new Error(error.response?.data?.error || 'Failed to fetch staff data');
+      throw new Error(error.response?.data?.error || 'Manual registration failed');
+    }
+  },
+  
+  // Get active food windows (for manual registration form)
+  getActiveFoodWindows: async () => {
+    try {
+      const response = await api.get('/staff/food-windows/active');
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to fetch active windows');
+    }
+  },
+  
+  // Confirm pickup
+  confirmPickup: async (citizenId) => {
+    try {
+      const response = await api.post(`/staff/citizen/${citizenId}/pickup`);
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Pickup confirmation failed');
     }
   }
 };
 
-// Citizen API methods
+// Citizen (Public) API methods
 export const citizenAPI = {
+  // Submit form via QR code link
   submitForm: async (qrId, formData) => {
     try {
       const response = await api.post(`/citizen/submit/${qrId}`, formData);
       return response.data;
     } catch (error) {
-      throw new Error(error.response?.data?.error || 'Submission failed');
+      throw new Error(error.response?.data?.error || 'Submission failed. Check phone number and quota.');
+    }
+  },
+
+  // Check order status
+  checkOrderStatus: async (orderNumber) => {
+    try {
+      const response = await api.get(`/citizen/order/${orderNumber}`);
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Order not found');
     }
   }
 };
