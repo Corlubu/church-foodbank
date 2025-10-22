@@ -147,7 +147,7 @@ app.use('/api/citizen/submit', submissionLimiter);
 app.use('/api/citizen', citizenRoutes);
 
 // Protected routes (Note: Ensure 'authenticateToken' is renamed to 'authenticateJWT' in admin.js and staff.js)
-app.use('/api/admin', authenticateJWT, authorizeRoles(['admin']), adminRoutes);
+app.use('/api/admin/*', authenticateJWT, authorizeRoles(['admin']), adminRoutes);
 app.use('/api/staff', authenticateJWT, authorizeRoles(['staff', 'admin']), staffRoutes);
 
 // ======================
