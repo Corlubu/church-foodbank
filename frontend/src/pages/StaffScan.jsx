@@ -1,7 +1,7 @@
 // frontend/src/pages/StaffScan.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { QrReader } from 'react-qr-barcode-scanner';
+import  BarcodeScanner  from 'react-qr-barcode-scanner';
 import CitizenLookup from '../components/CitizenLookup'; // The component we fixed
 import { useAuth } from '../context/AuthContext';
 
