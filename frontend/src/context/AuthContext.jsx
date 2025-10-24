@@ -20,6 +20,22 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Helper function to set auth state and storage
+  const setAuthState = (userData, token) => {
+    if (userData && token) {
+      const fullUserData = { ...userData, token };
+      localStorage.setItem('token', token);
+      localStorage.setItem('role', userData.role);
+      localStorage.setItem('userData', JSON.stringify(fullUserData));
+      setUser(fullUserData);
+    } else {
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      localStorage.removeItem('userData');
+      setUser(null);
+    }
+  };
+
   // Check authentication status on app start
   useEffect(() => {
     checkAuth();
@@ -27,45 +43,25 @@ export const AuthProvider = ({ children }) => {
 
   // Verify token with backend
   const checkAuth = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const token = localStorage.getItem('token');
-      const role = localStorage.getItem('role');
-      const userData = localStorage.getItem('userData');
-      
-      if (token && role) {
-        // If we have user data in localStorage, use it immediately
-        if (userData) {
-          setUser(JSON.parse(userData));
-        }
-        
-        // Verify with backend
-        try {
-          const response = await authAPI.verifyToken();
-          const fullUserData = {
-            role,
-            ...response.user,
-            token
-          };
-          
-          setUser(fullUserData);
-          // Update localStorage with fresh user data
-          localStorage.setItem('userData', JSON.stringify(fullUserData));
-        } catch (verifyError) {
-          console.warn('Token verification failed:', verifyError);
-          // Token is invalid, logout user
-          logout();
-        }
+    setLoading(true);
+    setError(null);
+    const token = localStorage.getItem('token');
+
+    if (token && !isTokenExpired(token)) {
+      try {
+        // Token exists and isn't expired, verify it with backend
+        const response = await authAPI.verifyToken();
+        setAuthState(response.user, token);
+      } catch (verifyError) {
+        console.warn('Token verification failed:', verifyError.message);
+        // Token is invalid
+        setAuthState(null, null);
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      setError('Authentication check failed');
-      logout();
-    } finally {
-      setLoading(false);
+    } else {
+      // No token or it's expired
+      setAuthState(null, null);
     }
+    setLoading(false);
   };
 
   // Check if token is expired (client-side only)
@@ -90,27 +86,17 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      
       const response = await authAPI.login(email, password);
       
       if (response.token && response.user) {
-        const { token, user } = response;
-        
-        // Store in localStorage
-        localStorage.setItem('token', token);
-        localStorage.setItem('role', user.role);
-        localStorage.setItem('userData', JSON.stringify(user));
-        
-        // Set user in state
-        setUser(user);
-        
-        return { success: true, user };
+        setAuthState(response.user, response.token);
+        return { success: true, user: response.user };
       }
       
       throw new Error('Invalid response from server');
       
     } catch (error) {
-      const errorMessage = error.response?.data?.error || error.message || 'Login failed';
+      const errorMessage = error.message || 'Login failed';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
@@ -120,20 +106,18 @@ export const AuthProvider = ({ children }) => {
 
   // Logout function
   const logout = async () => {
-    try {
-      // Call logout API if user was logged in
-      if (user) {
+    // Optimistically log out on the client
+    const token = localStorage.getItem('token');
+    setAuthState(null, null);
+    setError(null);
+
+    // Attempt to log out from backend
+    if (token) {
+      try {
         await authAPI.logout();
+      } catch (error) {
+        console.error('Logout API call failed:', error.message);
       }
-    } catch (error) {
-      console.error('Logout API call failed:', error);
-    } finally {
-      // Always clear local storage and state
-      localStorage.removeItem('token');
-      localStorage.removeItem('role');
-      localStorage.removeItem('userData');
-      setUser(null);
-      setError(null);
     }
   };
 
@@ -142,10 +126,10 @@ export const AuthProvider = ({ children }) => {
     setError(null);
   };
 
-  // Update user data
-  const updateUser = (updatedUserData) => {
+  // Update user data (e.g., profile update)
+  const updateUser = (updatedData) => {
     setUser(prevUser => {
-      const newUser = { ...prevUser, ...updatedUserData };
+      const newUser = { ...prevUser, ...updatedData };
       localStorage.setItem('userData', JSON.stringify(newUser));
       return newUser;
     });
