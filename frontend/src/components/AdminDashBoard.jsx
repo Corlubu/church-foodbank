@@ -50,10 +50,14 @@ export default function AdminDashboard() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
     setError('');
     setMessage('');
-
     try {
+
+      // Use the clean payload
+      const response = await api.post('/admin/food-window', payload);
+      
       // Create food window first
       const windowRes = await adminAPI.createFoodWindow({
         available_bags: parseInt(formData.available_bags),
@@ -77,6 +81,8 @@ export default function AdminDashboard() {
       });
     } catch (err) {
       setError(err.message || 'Failed to create food window');
+    } finally {
+      setLoading(false);
     }
   };
 
