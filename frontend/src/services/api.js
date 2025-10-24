@@ -27,60 +27,96 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // This is a critical failure (invalid token/session)
-      // Clear all auth data and force a reload to the login page.
-      // This is the simplest way to ensure app-wide state is reset.
       localStorage.removeItem('token');
       localStorage.removeItem('role');
       localStorage.removeItem('userData');
       
-      // Check if we are already on the login page to avoid a loop
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }
-    return Promise.reject(error);
+    // Return a more consistent error object
+    const errorData = error.response?.data || { error: error.message };
+    return Promise.reject(new Error(errorData.error || 'An unexpected error occurred'));
   }
 );
 
 // --- Auth API methods ---
-// These are kept because AuthContext.jsx depends on them.
-// We assume the backend /auth/ routes exist.
 export const authAPI = {
-  // Verify token with backend
   verifyToken: async () => {
-    try {
-      // NOTE: Your backend did not provide an /auth/verify route.
-      // I am assuming it exists based on your code.
-      // A common pattern is to hit a 'me' or 'profile' route.
-      const response = await api.get('/auth/verify');
-      return response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.error || 'Token verification failed');
-    }
+    // NOTE: We're using a GET to /admin/food-windows as a 'verify' route
+    // This isn't ideal, but it works without adding a new backend route.
+    // A dedicated GET /auth/me route would be better.
+    // This call will either succeed or 401, which our interceptor handles.
+    const response = await api.get('/admin/food-windows'); // Assuming admin-only
+    return response.data; // This data isn't used, we just check for success
   },
 
-  // Login user
   login: async (email, password) => {
-    try {
-      const response = await api.post('/auth/login', { email, password });
-      return response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.error || 'Login failed');
-    }
+    const response = await api.post('/auth/login', { email, password });
+    return response.data;
   },
 
-  // Logout user (backend call only)
   logout: async () => {
-    try {
-      // The context will handle clearing localStorage
-      await api.post('/auth/logout');
-    } catch (error) {
-      // Fail silently, as the user is already logged out on the client
-      console.error('Backend logout error:', error.message);
-    }
+    await api.post('/auth/logout');
   },
 };
 
-// The main axios instance is exported for use in other services/pages
+// --- Admin API methods ---
+export const adminAPI = {
+  getReport: async (page = 1, limit = 50) => {
+    const response = await api.get(`/admin/citizens?page=${page}&limit=${limit}`);
+    return response.data;
+  },
+
+  exportReport: async () => {
+    const response = await api.get('/admin/export/excel', {
+      responseType: 'blob',
+    });
+    return response.data; // This will be the blob
+  },
+
+  createFoodWindow: async (windowData) => {
+    const response = await api.post('/admin/food-window', windowData);
+    return response.data;
+  },
+
+  createQR: async (qrConfig) => {
+    const response = await api.post('/admin/qr', qrConfig);
+    return response.data;
+  },
+};
+
+// --- Staff API methods ---
+export const staffAPI = {
+  getActiveWindows: async () => {
+    const response = await api.get('/staff/food-windows/active');
+    return response.data;
+  },
+
+  manualRegister: async (formData) => {
+    const response = await api.post('/staff/citizen/manual', formData);
+    return response.data;
+  },
+
+  lookupQR: async (qrId) => {
+    const response = await api.get(`/staff/lookup/${qrId}`);
+    return response.data;
+  },
+
+  confirmPickup: async (citizenId) => {
+    const response = await api.post(`/staff/citizen/${citizenId}/pickup`);
+    return response.data;
+  },
+};
+
+// --- Citizen API methods ---
+export const citizenAPI = {
+  submitForm: async (qrId, formData) => {
+    const response = await api.post(`/citizen/submit/${qrId}`, formData);
+    return response.data;
+  },
+};
+
+// Export the base instance if needed, but prefer the structured objects
 export default api;
