@@ -110,7 +110,7 @@ function AppContent() {
 
       {/* Protected Admin Routes */}
       <Route
-        path="/admin"
+        path="/admin/*"
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminHome />
@@ -128,7 +128,7 @@ function AppContent() {
 
       {/* Protected Staff Routes */}
       <Route
-        path="/staff"
+        path="/staff/*"
         element={
           <ProtectedRoute allowedRoles={['staff', 'admin']}>
             <StaffDashboard />
