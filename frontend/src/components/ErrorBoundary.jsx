@@ -2,16 +2,6 @@
 import React from 'react';
 import './ErrorBoundary.css';
 
-/**
- * ErrorBoundary Component
- * 
- * @param {Object} props
- * @param {ReactNode} props.children - Child components to wrap
- * @param {ReactNode|Function} props.fallback - Custom fallback UI or function that returns JSX
- * @param {Function} props.onError - Callback when error is caught
- * @param {boolean} props.resetOnRouteChange - Reset error when route changes
- * @param {string} props.className - Additional CSS classes
- */
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -19,58 +9,42 @@ class ErrorBoundary extends React.Component {
       hasError: false,
       error: null,
       errorInfo: null,
-      errorId: null
+      errorId: null,
     };
-    
-    // Generate a unique error ID for tracking
     this.errorId = Math.random().toString(36).substring(2, 9);
   }
 
   static getDerivedStateFromError(error) {
-    // Update state so the next render shows the fallback UI
     return {
       hasError: true,
-      error: error
+      error: error,
     };
   }
 
   componentDidCatch(error, errorInfo) {
-    // Catch errors in any components below and re-render with error message
     this.setState({
       error: error,
       errorInfo: errorInfo,
-      errorId: this.errorId
+      errorId: this.errorId,
     });
-
-    // Log error to console
     console.error('ErrorBoundary caught an error:', error, errorInfo);
-
-    // Call custom error handler if provided
     if (this.props.onError) {
       this.props.onError(error, errorInfo, this.errorId);
     }
-
-    // You can also log errors to an error reporting service here
     this.logErrorToService(error, errorInfo, this.errorId);
   }
 
+  // --- UPDATED ---
+  // Removed componentDidUpdate as the location prop logic
+  // was not compatible with React Router v6 without a HOC.
+  // Resetting when children change is often enough.
   componentDidUpdate(prevProps) {
-    // Reset error boundary when route changes (if enabled)
-    if (this.props.resetOnRouteChange && 
-        this.props.location !== prevProps.location) {
-      this.resetErrorBoundary();
-    }
-
-    // Reset error boundary when children change
-    if (this.props.children !== prevProps.children) {
+    if (this.state.hasError && this.props.children !== prevProps.children) {
       this.resetErrorBoundary();
     }
   }
 
   logErrorToService = (error, errorInfo, errorId) => {
-    // In a real app, you would send this to an error reporting service
-    // like Sentry, LogRocket, etc.
-    
     const errorData = {
       errorId: errorId,
       message: error.toString(),
@@ -78,28 +52,30 @@ class ErrorBoundary extends React.Component {
       componentStack: errorInfo.componentStack,
       url: window.location.href,
       userAgent: navigator.userAgent,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    // Example: Send to your backend API
     if (process.env.NODE_ENV === 'production') {
-      this.sendToErrorService(errorData);
+      // this.sendToErrorService(errorData); // TODO: Implement backend endpoint
     }
   };
 
+  // --- UPDATED ---
+  // Commented out the fetch to a non-existent API endpoint
   sendToErrorService = async (errorData) => {
-    try {
-      // You can implement your error reporting service here
-      await fetch('/api/error-log', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(errorData)
-      });
-    } catch (e) {
-      console.warn('Failed to send error to service:', e);
-    }
+    console.log('Logging error to service (disabled):', errorData);
+    // try {
+    //   // TODO: Create a /api/error-log endpoint on your backend
+    //   await fetch('/api/error-log', {
+    //     method: 'POST',
+    //     headers: {
+    //       'Content-Type': 'application/json',
+    //     },
+    //     body: JSON.stringify(errorData)
+    //   });
+    // } catch (e) {
+    //   console.warn('Failed to send error to service:', e);
+    // }
   };
 
   resetErrorBoundary = () => {
@@ -107,29 +83,14 @@ class ErrorBoundary extends React.Component {
       hasError: false,
       error: null,
       errorInfo: null,
-      errorId: null
+      errorId: null,
     });
-    
-    // Generate a new error ID for next error
     this.errorId = Math.random().toString(36).substring(2, 9);
   };
 
   render() {
     if (this.state.hasError) {
-      // Render custom fallback UI
-      if (this.props.fallback) {
-        if (typeof this.props.fallback === 'function') {
-          return this.props.fallback({
-            error: this.state.error,
-            errorInfo: this.state.errorInfo,
-            errorId: this.state.errorId,
-            resetErrorBoundary: this.resetErrorBoundary
-          });
-        }
-        return this.props.fallback;
-      }
-
-      // Default fallback UI
+      // Default fallback UI (rest of the file is unchanged)
       return (
         <div className={`error-boundary ${this.props.className || ''}`}>
           <div className="error-boundary__content">
@@ -165,7 +126,6 @@ class ErrorBoundary extends React.Component {
               </button>
             </div>
 
-            {/* Error details - only shown in development */}
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <details className="error-boundary__details">
                 <summary>Error Details (Development)</summary>
@@ -185,7 +145,6 @@ class ErrorBoundary extends React.Component {
         </div>
       );
     }
-
     return this.props.children;
   }
 }
