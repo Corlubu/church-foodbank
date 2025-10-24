@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminAPI } from '../services/api'; // Import new API object
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext'; // Import useAuth
 import { QRCodeCanvas } from 'qrcode.react';
 
