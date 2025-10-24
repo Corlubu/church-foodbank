@@ -4,7 +4,7 @@ const { Readable } = require('stream');
 
 /**
  * Generate an Excel report from citizen data
- * @param {Array<Object>} rows - Array of citizen objects
+ * @param {Array<Object>} rows - Array of citizen objects from the DB
  * @param {string} sheetName - Name of the worksheet
  * @returns {Promise<Buffer>} - Excel file as buffer
  */
@@ -19,46 +19,33 @@ async function generateCitizenReport(rows, sheetName = 'Food Bank Registrations'
     { header: 'Email', key: 'email', width: 30 },
     { header: 'Order Number', key: 'order_number', width: 20 },
     { header: 'Submission Date', key: 'submitted_at', width: 22 },
-    { header: 'Distribution Window', key: 'window_start', width: 22 },
+    { header: 'Distribution Window Start', key: 'window_start', width: 25 },
+    { header: 'Distribution Window End', key: 'window_end', width: 25 },
     { header: 'Pickup Confirmed', key: 'pickup_confirmed', width: 18 }
   ];
 
   // Add rows
   if (rows.length > 0) {
-    worksheet.addRows(rows);
+    // Process rows for correct formatting
+    const formattedRows = rows.map(row => ({
+      ...row,
+      submitted_at: row.submitted_at ? new Date(row.submitted_at) : null,
+      window_start: row.window_start ? new Date(row.window_start) : null,
+      window_end: row.window_end ? new Date(row.window_end) : null,
+      pickup_confirmed: row.pickup_confirmed ? 'Yes' : 'No'
+    }));
+
+    worksheet.addRows(formattedRows);
 
     // Format date columns
-    const dateColumns = ['submitted_at', 'window_start'];
-    rows.forEach((row, rowIndex) => {
-      dateColumns.forEach(col => {
-        const cell = worksheet.getCell(rowIndex + 2, worksheet.getColumn(col).number);
-        if (row[col]) {
-          cell.value = new Date(row[col]);
-          cell.numFmt = 'YYYY-MM-DD HH:MM';
-        }
-      });
+    ['submitted_at', 'window_start', 'window_end'].forEach(colKey => {
+      const col = worksheet.getColumn(colKey);
+      col.numFmt = 'YYYY-MM-DD HH:MM';
     });
 
-    // Format boolean column
-    const boolCol = worksheet.getColumn('pickup_confirmed');
-    boolCol.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
-      if (rowNumber > 1) {
-        cell.value = cell.value ? 'Yes' : 'No';
-      }
-    });
   } else {
-    worksheet.addRow({ name: 'No data available', phone: '', email: '', order_number: '', submitted_at: '', window_start: '', pickup_confirmed: '' });
+    worksheet.addRow({ name: 'No data available' });
   }
-
-  // Auto-fit columns (optional, adds slight overhead)
-  worksheet.columns.forEach(column => {
-    let maxLength = column.header.length;
-    column.eachCell({ includeEmpty: true }, (cell) => {
-      const cellLength = cell.value ? cell.value.toString().length : 0;
-      if (cellLength > maxLength) maxLength = cellLength;
-    });
-    column.width = Math.min(maxLength + 2, 50); // Cap at 50
-  });
 
   // Generate buffer
   const buffer = await workbook.xlsx.writeBuffer();
