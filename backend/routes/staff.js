@@ -3,11 +3,13 @@ const express = require('express');
 const db = require('../config/db');
 const { authenticateJWT, authorizeRoles } = require('../middleware/auth');
 const { sendSMS } = require('../utils/twilioClient');
+const { normalizePhone } = require('../utils/phone'); // Import the utility
 
 const router = express.Router();
 
 // Lookup citizen by QR code ID
 router.get('/lookup/:qrId', authenticateJWT, authorizeRoles('staff', 'admin'), async (req, res) => {
+  // ... (this route is fine, no changes needed)
   const { qrId } = req.params;
 
   try {
@@ -63,9 +65,14 @@ router.post('/citizen/manual', authenticateJWT, authorizeRoles('staff', 'admin')
     return res.status(400).json({ error: 'Name must be less than 100 characters' });
   }
 
+  const client = await db.pool.connect();
+
   try {
-    // Validate food window
-    const windowResult = await db.query(
+    // Start transaction
+    await client.query('BEGIN');
+
+    // 1. Validate food window
+    const windowResult = await client.query(
       `SELECT * FROM food_windows 
        WHERE id = $1 AND is_active = true 
        AND NOW() BETWEEN start_time AND end_time`,
@@ -73,44 +80,39 @@ router.post('/citizen/manual', authenticateJWT, authorizeRoles('staff', 'admin')
     );
     
     if (windowResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Selected food window is not active or not found' });
     }
 
     const foodWindow = windowResult.rows[0];
 
-    // Normalize phone
-    const normalizePhone = (phone) => {
-      const cleaned = phone.replace(/[^\d+]/g, '');
-      if (cleaned.startsWith('+')) return cleaned;
-      if (cleaned.length === 10) return '+1' + cleaned;
-      if (cleaned.length === 11 && cleaned.startsWith('1')) return '+' + cleaned;
-      throw new Error('Invalid phone number format');
-    };
+    // 2. Normalize phone
+    const normalizedPhone = normalizePhone(phone); // Use utility
 
-    const normalizedPhone = normalizePhone(phone);
-
-    // Check 14-day rule
-    const recentResult = await db.query(
+    // 3. Check 14-day rule
+    const recentResult = await client.query(
       `SELECT id, submitted_at FROM citizens 
        WHERE phone = $1 AND submitted_at > NOW() - INTERVAL '14 days'`,
       [normalizedPhone]
     );
     
     if (recentResult.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ 
         error: 'This phone number already requested food in the last 14 days',
         lastSubmission: recentResult.rows[0].submitted_at
       });
     }
 
-    // Check quota
-    const usedResult = await db.query(
-      'SELECT COUNT(*) FROM citizens WHERE food_window_id = $1', 
+    // 4. Check quota (with row-level lock)
+    const usedResult = await client.query(
+      'SELECT COUNT(*) FROM citizens WHERE food_window_id = $1 FOR UPDATE', 
       [food_window_id]
     );
     
     const usedBags = parseInt(usedResult.rows[0].count);
     if (usedBags >= foodWindow.available_bags) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ 
         error: 'Food quota for this window is full',
         available: foodWindow.available_bags,
@@ -118,18 +120,21 @@ router.post('/citizen/manual', authenticateJWT, authorizeRoles('staff', 'admin')
       });
     }
 
-    // Generate order number
+    // 5. Generate order number
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const orderNumber = `FB-${dateStr}-${String(usedBags + 1).padStart(3, '0')}`;
 
-    // Insert citizen
-    const citizenResult = await db.query(
+    // 6. Insert citizen
+    const citizenResult = await client.query(
       `INSERT INTO citizens (name, phone, email, order_number, food_window_id)
        VALUES ($1, $2, $3, $4, $5) RETURNING id, submitted_at`,
       [name.trim(), normalizedPhone, email?.trim() || null, orderNumber, food_window_id]
     );
 
-    // Send SMS
+    // 7. Commit
+    await client.query('COMMIT');
+
+    // 8. Send SMS (after commit)
     try {
       await sendSMS(
         normalizedPhone,
@@ -146,18 +151,25 @@ router.post('/citizen/manual', authenticateJWT, authorizeRoles('staff', 'admin')
       citizenId: citizenResult.rows[0].id
     });
   } catch (err) {
+    // Ensure rollback on error
+    await client.query('ROLLBACK');
+    
     console.error('Manual registration error:', err);
     
-    if (err.message.includes('phone number')) {
+    if (err.message.includes('phone number') || err.message.includes('Invalid phone number')) {
       return res.status(400).json({ error: err.message });
     }
     
     res.status(500).json({ error: 'Registration failed' });
+  } finally {
+    // ALWAYS release the client
+    client.release();
   }
 });
 
 // Get active food windows
 router.get('/food-windows/active', authenticateJWT, authorizeRoles('staff', 'admin'), async (req, res) => {
+  // ... (this route is fine, no changes needed)
   try {
     const result = await db.query(
       `SELECT 
@@ -178,8 +190,9 @@ router.get('/food-windows/active', authenticateJWT, authorizeRoles('staff', 'adm
   }
 });
 
-// Confirm pickup (optional enhancement)
+// Confirm pickup
 router.post('/citizen/:id/pickup', authenticateJWT, authorizeRoles('staff', 'admin'), async (req, res) => {
+  // ... (this route is fine, no changes needed)
   const { id } = req.params;
 
   try {
@@ -205,4 +218,5 @@ router.post('/citizen/:id/pickup', authenticateJWT, authorizeRoles('staff', 'adm
   }
 });
 
+module.exports = router;
 module.exports = router;
