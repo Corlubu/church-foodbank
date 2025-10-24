@@ -43,14 +43,14 @@ api.interceptors.response.use(
 
 // --- Auth API methods ---
 export const authAPI = {
-  /*verifyToken: async () => {
+  verifyToken: async () => {
     // NOTE: We're using a GET to /admin/food-windows as a 'verify' route
     // This isn't ideal, but it works without adding a new backend route.
     // A dedicated GET /auth/me route would be better.
     // This call will either succeed or 401, which our interceptor handles.
     const response = await api.get('/admin/food-windows'); // Assuming admin-only
     return response.data; // This data isn't used, we just check for success
-  },*/
+  },
 
   login: async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
