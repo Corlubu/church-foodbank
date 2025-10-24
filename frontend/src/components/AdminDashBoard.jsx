@@ -54,6 +54,14 @@ export default function AdminDashboard() {
     setLoading(true);
     setError('');
     setMessage('');
+    // ✅ FIX: Re-define the payload object
+    const payload = {
+      available_bags: formData.available_bags,
+      start_time: formData.start_time,
+      end_time: formData.end_time,
+      // Pass an empty string for description if it's not collected/required
+      description: '', 
+    };
     try {
 
       // Use the clean payload
