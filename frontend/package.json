@@ -26,5 +26,15 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
     "vite": "^5.2.0"
+  },
+    "overrides": {
+    "react-number-format": {
+      "react": "$react"
+    }
+  },
+    "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    }
   }
 }
