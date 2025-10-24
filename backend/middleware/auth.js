@@ -10,6 +10,10 @@ const authenticateJWT = (req, res, next) => {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = decoded;
+      
+      // ✨ ENHANCEMENT: Log successful decoding (Optional)
+      console.log(`✅ JWT decoded for UserID: ${decoded.userId}, Role: ${decoded.role}`);
+      
       next();
     } catch (error) {
       console.error('JWT verification failed:', error.message);
