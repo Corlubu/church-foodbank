@@ -2,30 +2,9 @@
 const express = require('express');
 const db = require('../config/db');
 const { sendSMS } = require('../utils/twilioClient');
+const { normalizePhone } = require('../utils/phone'); // Import the utility
 
 const router = express.Router();
-
-// Phone number normalization utility
-const normalizePhone = (phone) => {
-  if (!phone) throw new Error('Phone number is required');
-  
-  // Remove all non-digit characters except +
-  const cleaned = phone.replace(/[^\d+]/g, '');
-  
-  if (cleaned.startsWith('+')) {
-    return cleaned;
-  }
-  
-  if (cleaned.length === 10) {
-    return '+1' + cleaned;
-  }
-  
-  if (cleaned.length === 11 && cleaned.startsWith('1')) {
-    return '+' + cleaned;
-  }
-  
-  throw new Error('Invalid phone number format. Use +1234567890 or 1234567890 format.');
-};
 
 // Submit citizen data via QR code
 router.post('/submit/:qrId', async (req, res) => {
@@ -36,21 +15,25 @@ router.post('/submit/:qrId', async (req, res) => {
   if (!name || !phone) {
     return res.status(400).json({ error: 'Name and phone are required' });
   }
-
   if (name.length > 100) {
     return res.status(400).json({ error: 'Name must be less than 100 characters' });
   }
-
   if (email && email.length > 255) {
     return res.status(400).json({ error: 'Email must be less than 255 characters' });
   }
 
+  // Get a client from the pool for a transaction
+  const client = await db.pool.connect();
+
   try {
-    // Normalize phone number
+    // Normalize phone number (can throw an error)
     const normalizedPhone = normalizePhone(phone);
 
+    // Start transaction
+    await client.query('BEGIN');
+
     // 1. Validate QR code
-    const qrResult = await db.query(
+    const qrResult = await client.query(
       `SELECT qc.food_window_id, fw.available_bags, fw.start_time, fw.end_time
        FROM qr_codes qc
        JOIN food_windows fw ON qc.food_window_id = fw.id
@@ -62,17 +45,19 @@ router.post('/submit/:qrId', async (req, res) => {
     );
 
     if (qrResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invalid, expired, or inactive QR code' });
     }
 
     const { food_window_id, available_bags, start_time, end_time } = qrResult.rows[0];
 
-    // 2. Check if current time is within food window (with timezone consideration)
+    // 2. Check if current time is within food window
     const now = new Date();
     const windowStart = new Date(start_time);
     const windowEnd = new Date(end_time);
     
     if (now < windowStart || now > windowEnd) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ 
         error: 'Submission period is not active',
         currentTime: now.toISOString(),
@@ -81,13 +66,17 @@ router.post('/submit/:qrId', async (req, res) => {
       });
     }
 
-    // 3. Check if quota is full
-    const usedBagsResult = await db.query(
-      'SELECT COUNT(*) FROM citizens WHERE food_window_id = $1',
+    // 3. Check if quota is full (with row-level lock)
+    // We lock the food_window row (or related data) to prevent race conditions.
+    // Locking the count from citizens is a reliable way.
+    const usedBagsResult = await client.query(
+      'SELECT COUNT(*) FROM citizens WHERE food_window_id = $1 FOR UPDATE',
       [food_window_id]
     );
     const usedBags = parseInt(usedBagsResult.rows[0].count);
+    
     if (usedBags >= available_bags) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ 
         error: 'Food quota has been reached. No more requests accepted.',
         available: available_bags,
@@ -96,7 +85,7 @@ router.post('/submit/:qrId', async (req, res) => {
     }
 
     // 4. Enforce 14-day rule
-    const recentResult = await db.query(
+    const recentResult = await client.query(
       `SELECT id, submitted_at FROM citizens 
        WHERE phone = $1 
          AND submitted_at > NOW() - INTERVAL '14 days'`,
@@ -105,6 +94,7 @@ router.post('/submit/:qrId', async (req, res) => {
     if (recentResult.rows.length > 0) {
       const lastSubmission = new Date(recentResult.rows[0].submitted_at);
       const daysAgo = Math.floor((now - lastSubmission) / (1000 * 60 * 60 * 24));
+      await client.query('ROLLBACK');
       return res.status(400).json({ 
         error: 'You have already requested food in the last 14 days. Please wait.',
         lastSubmission: lastSubmission.toISOString(),
@@ -117,13 +107,16 @@ router.post('/submit/:qrId', async (req, res) => {
     const orderNumber = `FB-${dateStr}-${String(usedBags + 1).padStart(3, '0')}`;
 
     // 6. Insert citizen
-    const citizenResult = await db.query(
+    const citizenResult = await client.query(
       `INSERT INTO citizens (name, phone, email, order_number, food_window_id)
        VALUES ($1, $2, $3, $4, $5) RETURNING id, submitted_at`,
       [name.trim(), normalizedPhone, email?.trim() || null, orderNumber, food_window_id]
     );
 
-    // 7. Send SMS via Twilio
+    // 7. Commit the transaction
+    await client.query('COMMIT');
+
+    // 8. Send SMS (after transaction is committed)
     try {
       const smsResult = await sendSMS(
         normalizedPhone,
@@ -147,6 +140,9 @@ router.post('/submit/:qrId', async (req, res) => {
     });
 
   } catch (err) {
+    // Ensure rollback on any error
+    await client.query('ROLLBACK');
+    
     console.error('Citizen submission error:', err);
     
     if (err.message.includes('phone number') || err.message.includes('Phone number')) {
@@ -154,6 +150,9 @@ router.post('/submit/:qrId', async (req, res) => {
     }
     
     res.status(500).json({ error: 'Registration failed. Please try again later.' });
+  } finally {
+    // ALWAYS release the client
+    client.release();
   }
 });
 
