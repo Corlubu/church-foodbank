@@ -1,5 +1,13 @@
 // backend/routes/auth.js
+const express = require('express');
+const db = require('../config/db'); // Import your DB connection
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
+// FIX: Initialize the Express Router
+const router = express.Router(); 
+
+// Login Route (now using PostgreSQL and bcrypt)
 router.post('/login', async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -8,31 +16,29 @@ router.post('/login', async (req, res, next) => {
     const userResult = await db.query('SELECT * FROM users WHERE email = $1', [email]);
     
     if (userResult.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      // Use next() to pass to the error middleware for consistency
+      const err = new Error('Invalid credentials');
+      err.statusCode = 401;
+      return next(err);
     }
 
     const user = userResult.rows[0];
 
     // 2. Compare the plain password with the hashed password from the DB
-    // NOTE: If you haven't hashed the passwords yet, this is where you'd do it.
-    // For now, if passwords are in plain text, you might use: password === user.password 
-    // but the final code MUST use bcrypt.
-    
-    // ❌ DANGER: ONLY use for temporary testing if DB passwords are plain text.
-    // const passwordMatch = (password === user.password); 
-    
-    // ✅ PROPER IMPLEMENTATION (assuming user.password is a hash):
+    // IMPORTANT: Ensure passwords in your DB are bcrypt hashes!
     const passwordMatch = await bcrypt.compare(password, user.password); 
 
     if (!passwordMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      const err = new Error('Invalid credentials');
+      err.statusCode = 401;
+      return next(err);
     }
 
     // 3. Generate JWT Token with role
     const token = jwt.sign(
       { 
         userId: user.id, 
-        role: user.role // 👈 CRITICAL: This role is used by your middleware/auth.js
+        role: user.role // CRITICAL: Used by middleware/auth.js
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
@@ -51,10 +57,18 @@ router.post('/login', async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
-    // Pass the error to your centralized error handler (backend/middleware/error.js)
-    next(error); 
+    console.error('Login database error:', error);
+    next(error); // Pass the error to your centralized error handler
   }
 });
 
-// module.exports = router;
+// Route for token verification (optional, but good practice)
+router.get('/verify', async (req, res, next) => {
+    // You'll need to use your authenticateJWT middleware here
+    // But since this file only exports routes, this logic often lives elsewhere.
+    // For now, let's keep it simple and focus on the login fix.
+    res.status(501).json({ error: 'Verification route not implemented' });
+});
+
+// FIX: Export the router
+module.exports = router;
