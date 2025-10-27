@@ -55,7 +55,7 @@ export default function QRScanner() {
 
       {/* Scanner Box */}
       <div style={styles.scannerContainer}>
-        <BarcodeScannerComponent
+        <BarcodeScanner
           onScan={handleScan}
           onError={handleError}
           // Optional: prefer rear camera on mobile
