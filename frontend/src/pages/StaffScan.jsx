@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 //import  BarcodeScanner  from 'react-qr-barcode-scanner';
-import BarcodeScanner from '../components/QRScanner';
+import QRScanner from '../components/QRScanner';
 import CitizenLookup from '../components/CitizenLookup'; // The component we fixed
 import { useAuth } from '../context/AuthContext';
 
