@@ -25,9 +25,13 @@ router.post('/login', async (req, res, next) => {
     const user = userResult.rows[0];
 
     // 2. Compare the plain password with the hashed password from the DB
-    // IMPORTANT: Ensure passwords in your DB are bcrypt hashes!
-    const passwordMatch = await bcrypt.compare(password, user.password); 
-
+     // ❌ DANGER: THIS IS INSECURE AND SHOULD ONLY BE USED FOR TESTING!
+     // -----------------------------------------------------------------
+    // BEFORE: const passwordMatch = await bcrypt.compare(password, user.password); 
+    
+    // AFTER: Change this line to compare the plain text passwords
+    const passwordMatch = (password === user.password); 
+    // -----------------------------------------------------------------
     if (!passwordMatch) {
       const err = new Error('Invalid credentials');
       err.statusCode = 401;
