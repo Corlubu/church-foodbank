@@ -1,7 +1,8 @@
 // frontend/src/pages/StaffScan.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import  BarcodeScanner  from 'react-qr-barcode-scanner';
+//import  BarcodeScanner  from 'react-qr-barcode-scanner';
+import BarcodeScannerComponent from '../components/QRScanner';
 import CitizenLookup from '../components/CitizenLookup'; // The component we fixed
 import { useAuth } from '../context/AuthContext';
 
@@ -48,7 +49,7 @@ export default function StaffScan() {
       <div style={styles.scannerContainer}>
         <h2 style={styles.subtitle}>Scan Citizen QR Code</h2>
         <div style={styles.scannerWrapper}>
-          <QrReader
+          <BarcodeScannerComponent
             onResult={handleScan}
             constraints={{ facingMode: 'environment' }}
             scanDelay={500}
