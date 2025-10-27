@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import  { BarcodeScanner }   from 'react-qr-barcode-scanner';
+import  BarcodeScanner   from 'react-qr-barcode-scanner';
 import api from '../services/api';
 
 export default function QRScanner() {
